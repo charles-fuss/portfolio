@@ -9,7 +9,7 @@ import logging
 from typing import Union, Optional
 from backtest import *
 from datetime import datetime, timedelta, timezone
-from utils import *
+from utils import cereal_ticker
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -64,7 +64,6 @@ class Ticker():
         self.ytick = yf.Ticker(ticker) # maybe download and convert to polars, probs faster
         self.ticker = ticker
         # self.shares = self.ytick.shares
-        # self._price_history = self.ytick._price_history()
         self.news = [
             item for item in self.ytick.news
             if (
@@ -76,18 +75,12 @@ class Ticker():
                 )
             )
         ]  
-        #     if (
-        #         datetime.fromisoformat(item['content']['displayTime'].replace("Z","+00:00")) 
-        #         >= now - timedelta(days=news_lookback)
-        #         and not any(muted.lower() in item['content']['provider']['displayName'] for muted in MUTED_PROVIDERS)
-        #         )
-        # ]    
 
         d = self.ytick.info
         # BIG OL' STAT COMPILATION
         self.price_action = self.ytick.history(period=f"{self.stat_lookback}d").reset_index() # keep as pandas -- quicker than json pulls
         self.core_stats = {
-            "currentPrice"
+            "currentPrice": d.get("currentPrice"),
             "regularMarketPrice" : d.get("regularMarketPrice"),
             "previousClose" : d.get("previousClose"),
             "_open" : d.get("open"),
@@ -181,8 +174,8 @@ class Ticker():
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        if getattr(self, "symbol", None) and self.ytick is None:
-            self.ytick = yf.Ticker(self.symbol)
+        if getattr(self, "ticker", None) and self.ytick is None:
+            self.ytick = yf.Ticker(self.ticker)
 
 
     # Advanced indicators, some stats/strategic frameworks
@@ -237,4 +230,6 @@ if __name__ == '__main__':
 
 
 # TODO
-    # store frequently used tickers in /tmp
+    # work on options stuff (black_scholes)
+    # basic strategies
+    # crypto potentially (CMC)

@@ -1,15 +1,12 @@
 import os
-import yfinance as yf
-import numpy as np
 import pickle
 import pandas as pd
-import scipy.stats
-import functools
 import logging
 from typing import Union, Optional
-from backtest import *
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from stocks import Ticker
+
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 tmpdir = os.path.join(os.getcwd(), 'tmp')
