@@ -4,7 +4,7 @@ import pandas as pd
 import logging
 from typing import Union, Optional
 from datetime import datetime, timezone
-from stocks import Ticker
+from .stocks import Ticker
 
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ def cereal_ticker(_type:str, update:bool, raw_ticker_list:Optional[list[str]] | 
     if _type == 'dump':
         for ticker in dmp:
             try:
-                with open(f'{tmpdir}/{ticker.ticker}.pkl', 'wb') as f:
+                with open(f'{tmpdir}\\\\{ticker.ticker}.pkl', 'wb') as f:
                     pickle.dump(ticker, f)
                 logger.warning(f"Wrote {ticker.ticker} to {tmpdir}")
             except Exception as e: 
@@ -35,7 +35,8 @@ def cereal_ticker(_type:str, update:bool, raw_ticker_list:Optional[list[str]] | 
                 tck.append(obj)
             except Exception as e: 
                 breakpoint()
-                logger.error(f"No results for {ticker}; loading manually")
+                logger.error(f"No results for {ticker}; loading manually ({e})")
                 tck.append(Ticker(ticker))
         return tck
+    else: raise ValueError("Please select either dump/load for _type")
         

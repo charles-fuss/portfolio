@@ -2,14 +2,15 @@ import os
 import yfinance as yf
 import numpy as np
 import pickle
+import math
 import pandas as pd
-import scipy.stats
+from scipy.stats import norm
 import functools
 import logging
 from typing import Union, Optional
-from backtest import *
+from .backtest import *
 from datetime import datetime, timedelta, timezone
-from utils import cereal_ticker
+# from .utils import cereal_ticker
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -41,22 +42,9 @@ TICKERS = {
     ]
 }
 now = datetime.now(timezone.utc)
-tmpdir = os.path.join(os.getcwd(), 'tmp')
+tmpdir = os.path.join(os.getcwd(), 'src', 'tmp')
 MUTED_PROVIDERS = ['motley', 'fool']
 class Ticker():
-    
-    @staticmethod
-    def black_scholes():
-        return 0
-    
-    @staticmethod 
-    def safe_parse_iso(ts):
-        if not ts:
-            return None
-        try:
-            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        except Exception:
-            return None
 
     def __init__(self, ticker:str, news_lookback:Optional[int]=1, stat_lookback:Optional[int]=30):
         assert stat_lookback <= 120, "Up to 120d supported, gonna be too slow"
@@ -79,6 +67,8 @@ class Ticker():
         d = self.ytick.info
         # BIG OL' STAT COMPILATION
         self.price_action = self.ytick.history(period=f"{self.stat_lookback}d").reset_index() # keep as pandas -- quicker than json pulls
+        self.price_action['PnL'] = ((self.price_action['Close'] - self.price_action['Open'])/self.price_action['Open']) * 100
+        self.price_action['log_returns'] = self.price_action['Open'].rolling(2).apply(lambda x: math.log(x.iloc[1] / x.iloc[0]), raw=False)
         self.core_stats = {
             "currentPrice": d.get("currentPrice"),
             "regularMarketPrice" : d.get("regularMarketPrice"),
@@ -156,12 +146,9 @@ class Ticker():
 
         self.last_updated = now
         self.action_recency = self.price_action['Date'].max()
-        logger.info(f'instantiated {self.ticker}')
+        logger.warning(f'instantiated {self.ticker}')
 
         # Do options stuff later
-        # self.price = self.ticker()
-        # self.expirations = ticker.options
-        # self.greeks = black_scholes()     
 
 
     # pickling attrs; handle yfinance client 
@@ -179,6 +166,56 @@ class Ticker():
 
 
     # Advanced indicators, some stats/strategic frameworks
+
+    def black_scholes(obj, _type:str, K:int, T:Optional[int]=30):
+        '''
+        basic theory: options are functions (black scholes for example) of stochastic processes (stocks) and you can derive the greeks by solving PDEs
+        - model assumes that the market consists of at least one risky asset ("stock") and one riskless asset, usually called the money market/bond.
+        - at expiry, a call is worth the stock price minus the "discounted" strike price (baking in time value of $$$ plus probability of exercising the option) 
+        or zero if expires OTM
+        - returns fluctuate based on stock (EV)
+        - closed form assumes constant params for easy solving, 
+        
+        formula = theta (time decay PDE) + Gamma (sensitivity of Delta to underlying price) + Drift (option prices grow @ r under risk-neutral measure) - Discounting (adjust for hedging; potential gains if unhedged)
+            Delta = sensitivity to price (∂V / ∂S) (1st deriv)
+            Gamma =  Delta's sensitivity to price (2nd deriv)
+            Vega = option's sensitivity to volatility (deriv w.r.t. σ)
+            Rho: interest-rate sensitivity
+        S = current stock price
+        K = strike
+        T = time to expiration (in years)
+        r = risk-free rate
+        σ = implied volatility
+        d1 = EV of S_t under the delta hedged measure (conditional on finishing in the money)
+        d2 = probability that we finish ITM (S_k > K = N(d2))
+        C = premium of call option (what is this option worth per share?)
+        '''
+
+        assert 1 <= T <= 252, 'k must be in terms of days (1<k<252)'
+        T /= 252
+
+        df = obj.price_action.sort_values('Date', ascending=False)
+        std, S0 = df['log_returns'].apply(lambda x: x*math.sqrt(252)).std(), df['Close'].iloc[0] # std must live in same timeline as T (years); multiply by sqrt since variance scales linearly
+        r = 4.148 / 100 # as of 11.16.25
+        print(f"std:{std}")
+        
+        if _type == 'call':
+            d1 = (math.log(S0/K) + (r+.5*std**2)*T)/(std*math.sqrt(T))
+            d2 = d1 - std*math.sqrt(T)
+            C = (S0 * norm.cdf(d1)) - (K*(math.e**(-r*T)) * norm.cdf(d2)) # cdf is way more based than pdf; used for calculating probability of all outcomes up until that point
+            return d1, d2, C
+        return 0
+    
+
+    @staticmethod 
+    def safe_parse_iso(ts):
+        if not ts:
+            return None
+        try:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
     def ma(self, lookback:int, weighted:bool) -> pd.DataFrame:
         sma = self.price_action['Close'].rolling(window=lookback).mean().dropna()
         if weighted: 
@@ -198,6 +235,7 @@ class Ticker():
     def pair_trade(self, s2:yf.Ticker):
         #significance
         return 0
+    
 
 def pull_random_stocks(_type: Union[str|None], p:int) -> list[str]:
     assert _type in [None, 'blue_chips', 'high_risk', 'commodities', 'bonds'], "choose a valid type (['blue_chips', 'high_risk', 'commodities', 'bonds', None])"
@@ -233,3 +271,7 @@ if __name__ == '__main__':
     # work on options stuff (black_scholes)
     # basic strategies
     # crypto potentially (CMC)
+    # add "Bootstrap and permutation testing modeled against a backtested portfolio." to measure chance of blowup (reddit post)
+    # refs:
+        # https://optionomega.com/
+        # quantlib.org
