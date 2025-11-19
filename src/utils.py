@@ -4,7 +4,6 @@ import pandas as pd
 import logging
 from typing import Union, Optional
 from datetime import datetime, timezone
-from .stocks import Ticker
 
 
 logger = logging.getLogger(__name__)
@@ -13,7 +12,7 @@ tmpdir = os.path.join(os.getcwd(), 'tmp')
 now = datetime.now(timezone.utc)
 
 # serialization
-def cereal_ticker(_type:str, update:bool, raw_ticker_list:Optional[list[str]] | None = None, dmp:Optional[list[Ticker]] | None = None) -> Union[int | list[Ticker]]:
+def cereal_ticker(_type:str, update:bool, raw_ticker_list:Optional[list[str]] | None = None, dmp:Optional[list] | None = None) -> Union[int | list]:
     if _type == 'dump':
         for ticker in dmp:
             try:

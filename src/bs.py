@@ -50,7 +50,7 @@ def black_scholes(obj, _type:str, K:int, T:Optional[int]=30):
         
         if _type == 'call': return d1, d2, C # probability weighted upside
         P = C - S0 + (K*math.e**-r*T)
-        THIS IS WRONG, FIX!!!
+        # THIS IS WRONG, FIX!!!
         if _type =='put': return P, d1, d2 # probability-weighted downside
              
         return 0

@@ -1,3 +1,4 @@
+from google.cloud import bigquery
 import os
 import yfinance as yf
 import numpy as np
@@ -5,10 +6,11 @@ import pickle
 import math
 import pandas as pd
 from scipy.stats import norm
+from .utils import cereal_ticker
 import functools
 import logging
 from typing import Union, Optional
-from .backtest import *
+# from .backtest import *
 from datetime import datetime, timedelta, timezone
 # from .utils import cereal_ticker
 
@@ -44,6 +46,8 @@ TICKERS = {
 now = datetime.now(timezone.utc)
 tmpdir = os.path.join(os.getcwd(), 'src', 'tmp')
 MUTED_PROVIDERS = ['motley', 'fool']
+project = 'fihh'
+
 class Ticker():
 
     def __init__(self, ticker:str, news_lookback:Optional[int]=1, stat_lookback:Optional[int]=30):
@@ -167,7 +171,7 @@ class Ticker():
 
     # Advanced indicators, some stats/strategic frameworks
 
-    def black_scholes(obj, _type:str, K:int, T:Optional[int]=30):
+    def black_scholes(self, _type:str, K:int, T:Optional[int]=30):
         '''
         basic theory: options are functions (black scholes for example) of stochastic processes (stocks) and you can derive the greeks by solving PDEs
         - model assumes that the market consists of at least one risky asset ("stock") and one riskless asset, usually called the money market/bond.
@@ -225,16 +229,24 @@ class Ticker():
             )
         else: return sma[-1]
 
-    from backtesting import Backtest, Strategy
-    def signal_significance(self, rel:Strategy):
-        n = 10_000
-        p = .05
-        test = 1 #np.? --> t-test
-        return 0
+    # from backtesting import Backtest, Strategy
+    # def signal_significance(self, rel:Strategy):
+    #     n = 10_000
+    #     p = .05
+    #     test = 1 #np.? --> t-test
+    #     return 0
 
     def pair_trade(self, s2:yf.Ticker):
         #significance
         return 0
+    
+    def to_df(self):
+        stats, df = ["liquidity", "income", "company_stats", "valuation_stats"], pd.DataFrame()
+        merged = {}
+        for stat in stats:merged.update(self.__dict__[stat])
+        merged["name"] = self.ticker
+        df = pd.DataFrame([merged])
+        return df
     
 
 def pull_random_stocks(_type: Union[str|None], p:int) -> list[str]:
@@ -251,14 +263,38 @@ def pull_random_stocks(_type: Union[str|None], p:int) -> list[str]:
         stx.add(choice)
     return list(stx)
 
+def load_to_bq(ticker_list:list[pd.DataFrame], destination_table):
+    BQ = bigquery.Client(project)
+    destination = '{0}.{1}.{2}'.format("fihh", "stocks", destination_table)
+    job_config = bigquery.LoadJobConfig(
+        write_disposition='WRITE_TRUNCATE',
+    )
 
+    retry = True
+    while retry:
+        try:
+            job = BQ.load_table_from_dataframe(df, destination, job_config=job_config)
+            job.result()  # Waits for the job to complete.
+            retry = False
+        except Exception as e:
+            print(f"failed to upload, trying again ({e})")
+            breakpoint()
+
+    destination_table = BQ.get_table(destination)
+    print("Loaded {} rows.".format(len(df)))
+    return 0
 
 def main():
     ## == testing ===
+
+
+    # run with python -m src.stocks
+
     # stx = pull_random_stocks(_type='blue_chips', p=5)
-    stx = ['PG', 'WMT', 'NKE', 'JPM']
-    cereal_ticker(_type='load', raw_ticker_list=stx, update=False)
-    
+    # stx = Ticker('WMT')
+    # cereal_ticker(_type='dump', dmp=[stx], update=False)
+    stx = cereal_ticker(_type='load', raw_ticker_list=['WMT'], update=False)[0]    
+    breakpoint()
     
     # Always dump portfolio so we can see if it's already in tmp
     # cereal_ticker(_type='dump', dmp=portfolio, update=False)
@@ -272,6 +308,7 @@ if __name__ == '__main__':
     # basic strategies
     # crypto potentially (CMC)
     # add "Bootstrap and permutation testing modeled against a backtested portfolio." to measure chance of blowup (reddit post)
+    # realtime equtiies WebSocket: wss://stream.data.alpaca.markets/v2/sip
     # refs:
         # https://optionomega.com/
         # quantlib.org
